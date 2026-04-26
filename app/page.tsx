@@ -1,38 +1,28 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase, type Task, type TaskStatus, type Member, type Event, type Update } from '@/lib/supabase'
-
-/* ─── DESIGN TOKENS ─────────────────────────────────────────────────────── */
-// McKinsey-inspired: editorial, refined, black/white/blue
-// Fonts: Playfair Display (headers) + IBM Plex Sans (body)
 
 const MEMBERS: Member[] = ['Aybars', 'Maga', 'Moritz']
 
 const MEMBER_COLORS: Record<Member, string> = {
   Aybars: '#0065BD',
-  Maga: '#111111',
-  Moritz: '#888888',
+  Maga: '#22c55e',
+  Moritz: '#f59e0b',
 }
 
-const MEMBER_ACCENT: Record<Member, string> = {
-  Aybars: '#0065BD',
-  Maga: '#444444',
-  Moritz: '#999999',
-}
-
-const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; bg: string; border: string }> = {
-  todo:       { label: 'To Do',       color: '#666',    bg: '#f5f5f5',   border: '#ddd' },
-  inprogress: { label: 'In Progress', color: '#0065BD', bg: '#EBF3FC',   border: '#0065BD' },
-  done:       { label: 'Done',        color: '#1a7a3c', bg: '#EBF7F0',   border: '#1a7a3c' },
+const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; bg: string }> = {
+  todo: { label: 'To Do', color: '#8a8a8a', bg: '#1f1f1f' },
+  inprogress: { label: 'In Progress', color: '#0065BD', bg: '#0a1929' },
+  done: { label: 'Done', color: '#22c55e', bg: '#0a1f0a' },
 }
 
 const EVENT_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
-  team_meeting:  { label: 'Team Meeting',  color: '#0065BD' },
-  milestone:     { label: 'Milestone',     color: '#7c3aed' },
-  prototype_day: { label: 'Prototype Day', color: '#b45309' },
-  deadline:      { label: 'Deadline',      color: '#b91c1c' },
-  other:         { label: 'Other',         color: '#555555' },
+  team_meeting: { label: 'Team Meeting', color: '#0065BD' },
+  milestone: { label: 'Milestone', color: '#a855f7' },
+  prototype_day: { label: 'Prototype Day', color: '#f59e0b' },
+  deadline: { label: 'Deadline', color: '#ef4444' },
+  other: { label: 'Other', color: '#8a8a8a' },
 }
 
 function getDaysUntil(dateStr: string): number {
@@ -54,134 +44,7 @@ function formatRelative(dateStr: string): string {
   return `in ${d}d`
 }
 
-/* ─── GLOBAL STYLES ─────────────────────────────────────────────────────── */
-const GlobalStyle = () => (
-  <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
-
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --black: #0a0a0a;
-      --ink:   #111111;
-      --mid:   #444444;
-      --muted: #888888;
-      --line:  #e2e2e2;
-      --bg:    #F7F6F3;
-      --white: #ffffff;
-      --blue:  #0065BD;
-      --blue-lt: #EBF3FC;
-      --blue-dk: #004A8C;
-      --serif: 'Playfair Display', Georgia, serif;
-      --sans:  'IBM Plex Sans', system-ui, sans-serif;
-      --mono:  'IBM Plex Mono', monospace;
-    }
-
-    body { background: var(--bg); color: var(--ink); font-family: var(--sans); }
-
-    input, textarea, select {
-      font-family: var(--sans);
-      font-size: 14px;
-      color: var(--ink);
-      background: var(--white);
-      border: 1px solid var(--line);
-      border-radius: 2px;
-      padding: 10px 12px;
-      width: 100%;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    input:focus, textarea:focus, select:focus { border-color: var(--blue); }
-    textarea { resize: vertical; }
-
-    .fade-in { animation: fadeUp 0.25s ease both; }
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(6px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    .tab-btn {
-      font-family: var(--sans);
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      padding: 10px 20px;
-      background: none;
-      border: none;
-      border-bottom: 2px solid transparent;
-      color: var(--muted);
-      cursor: pointer;
-      transition: color 0.15s, border-color 0.15s;
-    }
-    .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
-    .tab-btn:hover:not(.active) { color: var(--ink); }
-
-    .btn-primary {
-      font-family: var(--sans);
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      background: var(--blue);
-      color: #fff;
-      border: none;
-      padding: 10px 20px;
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-    .btn-primary:hover { background: var(--blue-dk); }
-    .btn-primary:disabled { background: #ccc; cursor: default; }
-
-    .btn-ghost {
-      font-family: var(--sans);
-      font-size: 12px;
-      font-weight: 500;
-      letter-spacing: 0.04em;
-      background: none;
-      color: var(--muted);
-      border: 1px solid var(--line);
-      padding: 10px 20px;
-      cursor: pointer;
-      transition: color 0.15s, border-color 0.15s;
-    }
-    .btn-ghost:hover { color: var(--ink); border-color: var(--mid); }
-
-    .divider { height: 1px; background: var(--line); }
-
-    .stat-card {
-      background: var(--white);
-      border: 1px solid var(--line);
-      padding: 20px 24px;
-    }
-
-    .card {
-      background: var(--white);
-      border: 1px solid var(--line);
-    }
-
-    /* Blog editor toolbar */
-    .blog-toolbar button {
-      font-family: var(--mono);
-      font-size: 13px;
-      background: none;
-      border: 1px solid var(--line);
-      padding: 4px 10px;
-      cursor: pointer;
-      color: var(--mid);
-      transition: all 0.1s;
-    }
-    .blog-toolbar button:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
-    .blog-toolbar button.active-fmt { background: var(--ink); color: #fff; border-color: var(--ink); }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
-  `}</style>
-)
-
-/* ─── MINI CALENDAR ─────────────────────────────────────────────────────── */
+// ── Mini Calendar ──────────────────────────────────────────────────────────
 function MiniCalendar({ events }: { events: Event[] }) {
   const [current, setCurrent] = useState(new Date())
   const year = current.getFullYear()
@@ -205,23 +68,17 @@ function MiniCalendar({ events }: { events: Event[] }) {
   for (let i = 1; i <= daysInMonth; i++) cells.push(i)
 
   return (
-    <div style={{ padding: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <button
-          onClick={() => setCurrent(new Date(year, month - 1))}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 18, lineHeight: 1, padding: '0 4px' }}
-        >‹</button>
-        <span style={{ fontFamily: 'var(--serif)', fontWeight: 600, fontSize: 14 }}>
+    <div style={{ background: '#141414', border: '1px solid #2a2a2a', borderRadius: 12, padding: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <button onClick={() => setCurrent(new Date(year, month - 1))} style={{ background: 'none', border: 'none', color: '#8a8a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>‹</button>
+        <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: 15, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
           {current.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
         </span>
-        <button
-          onClick={() => setCurrent(new Date(year, month + 1))}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', fontSize: 18, lineHeight: 1, padding: '0 4px' }}
-        >›</button>
+        <button onClick={() => setCurrent(new Date(year, month + 1))} style={{ background: 'none', border: 'none', color: '#8a8a8a', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>›</button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
         {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => (
-          <div key={d} style={{ textAlign: 'center', fontSize: 10, color: 'var(--muted)', fontWeight: 600, letterSpacing: '0.05em', padding: '2px 0', textTransform: 'uppercase' }}>{d}</div>
+          <div key={d} style={{ textAlign: 'center', fontSize: 10, color: '#8a8a8a', fontWeight: 600, padding: '2px 0' }}>{d}</div>
         ))}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
@@ -231,14 +88,15 @@ function MiniCalendar({ events }: { events: Event[] }) {
           const hasEvent = eventDates.has(day)
           return (
             <div key={i} style={{
-              textAlign: 'center', fontSize: 12, padding: '5px 0', position: 'relative',
-              background: isToday ? 'var(--blue)' : 'transparent',
-              color: isToday ? '#fff' : 'var(--ink)',
+              textAlign: 'center', fontSize: 12, padding: '4px 0',
+              borderRadius: 6, position: 'relative',
+              background: isToday ? '#0065BD' : 'transparent',
+              color: isToday ? '#fff' : '#e0e0e0',
               fontWeight: isToday ? 600 : 400,
             }}>
               {day}
               {hasEvent && !isToday && (
-                <div style={{ position: 'absolute', bottom: 1, left: '50%', transform: 'translateX(-50%)', width: 3, height: 3, borderRadius: '50%', background: 'var(--blue)' }} />
+                <div style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: '#f59e0b' }} />
               )}
             </div>
           )
@@ -248,7 +106,7 @@ function MiniCalendar({ events }: { events: Event[] }) {
   )
 }
 
-/* ─── TASK CARD ─────────────────────────────────────────────────────────── */
+// ── Task Card ──────────────────────────────────────────────────────────────
 function TaskCard({ task, onStatusChange, onDelete }: {
   task: Task
   onStatusChange: (id: string, status: TaskStatus) => void
@@ -260,53 +118,35 @@ function TaskCard({ task, onStatusChange, onDelete }: {
   const isOverdue = task.deadline && getDaysUntil(task.deadline) < 0 && task.status !== 'done'
 
   return (
-    <div className="fade-in" style={{
-      background: 'var(--white)',
-      border: '1px solid var(--line)',
+    <div style={{
+      background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 10,
+      padding: 14, marginBottom: 8,
       borderLeft: `3px solid ${memberColor}`,
-      padding: '14px 16px',
-      marginBottom: 8,
-      opacity: task.status === 'done' ? 0.6 : 1,
-      transition: 'opacity 0.2s, box-shadow 0.15s',
-    }}
-    onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.07)')}
-    onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+      opacity: task.status === 'done' ? 0.65 : 1,
+      transition: 'opacity 0.2s',
+    }} className="fade-in">
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
         <span style={{
-          fontSize: 13, fontWeight: 500, color: task.status === 'done' ? 'var(--muted)' : 'var(--ink)',
+          fontSize: 13, fontWeight: 500, color: task.status === 'done' ? '#8a8a8a' : '#fff',
           textDecoration: task.status === 'done' ? 'line-through' : 'none',
-          lineHeight: 1.4, flex: 1,
+          flex: 1,
         }}>{task.title}</span>
-        <button
-          onClick={() => onDelete(task.id)}
-          style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0 }}
-          onMouseEnter={e => (e.currentTarget.style.color = '#b91c1c')}
-          onMouseLeave={e => (e.currentTarget.style.color = '#ccc')}
-        >×</button>
+        <button onClick={() => onDelete(task.id)} style={{ background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 2px' }}>×</button>
       </div>
-      {task.description && (
-        <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.5 }}>{task.description}</p>
-      )}
+      {task.description && <p style={{ fontSize: 12, color: '#8a8a8a', marginBottom: 8 }}>{task.description}</p>}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <span style={{
-          fontSize: 10, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase',
-          color: memberColor, background: `${memberColor}14`,
-          padding: '3px 8px',
-        }}>{task.assignee}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: memberColor, background: `${memberColor}18`, padding: '2px 8px', borderRadius: 20 }}>
+          {task.assignee}
+        </span>
         <select
           value={task.status}
           onChange={e => onStatusChange(task.id, e.target.value as TaskStatus)}
-          style={{
-            fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase',
-            color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.border}`,
-            borderRadius: 0, padding: '3px 8px', width: 'auto', cursor: 'pointer'
-          }}
+          style={{ fontSize: 11, fontWeight: 600, color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.color}40`, borderRadius: 20, padding: '2px 8px', width: 'auto', cursor: 'pointer' }}
         >
           {statuses.map(s => <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>)}
         </select>
         {task.deadline && (
-          <span style={{ fontSize: 11, color: isOverdue ? '#b91c1c' : 'var(--muted)', marginLeft: 'auto', fontFamily: 'var(--mono)' }}>
+          <span style={{ fontSize: 11, color: isOverdue ? '#ef4444' : '#8a8a8a', marginLeft: 'auto' }}>
             {isOverdue ? '⚠ ' : ''}{formatRelative(task.deadline)}
           </span>
         )}
@@ -315,32 +155,8 @@ function TaskCard({ task, onStatusChange, onDelete }: {
   )
 }
 
-/* ─── MODAL BASE ─────────────────────────────────────────────────────────── */
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(10,10,10,0.6)', backdropFilter: 'blur(2px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 16
-    }}>
-      <div className="fade-in" style={{
-        background: 'var(--white)', border: '1px solid var(--line)', width: '100%', maxWidth: 480,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-      }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontFamily: 'var(--serif)', fontSize: 20, fontWeight: 700, letterSpacing: '-0.01em' }}>{title}</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 22, lineHeight: 1 }}>×</button>
-        </div>
-        <div style={{ padding: 24 }}>{children}</div>
-      </div>
-    </div>
-  )
-}
-
-/* ─── ADD TASK MODAL ─────────────────────────────────────────────────────── */
-function AddTaskModal({ onAdd, onClose }: {
-  onAdd: (t: Omit<Task, 'id' | 'created_at' | 'updated_at'>) => void
-  onClose: () => void
-}) {
+// ── Add Task Modal ─────────────────────────────────────────────────────────
+function AddTaskModal({ onAdd, onClose }: { onAdd: (t: Omit<Task, 'id' | 'created_at' | 'updated_at'>) => void; onClose: () => void }) {
   const [title, setTitle] = useState('')
   const [desc, setDesc] = useState('')
   const [assignee, setAssignee] = useState<Member>('Aybars')
@@ -354,288 +170,81 @@ function AddTaskModal({ onAdd, onClose }: {
   }
 
   return (
-    <Modal title="New Task" onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div>
-          <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Title *</label>
-          <input placeholder="What needs to be done?" value={title} onChange={e => setTitle(e.target.value)} autoFocus />
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
+      <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440 }} className="fade-in">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: 20, letterSpacing: '0.04em' }}>NEW TASK</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#8a8a8a', cursor: 'pointer', fontSize: 20 }}>×</button>
         </div>
-        <div>
-          <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Description</label>
-          <textarea placeholder="Optional details..." value={desc} onChange={e => setDesc(e.target.value)} rows={2} />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Assignee</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <input placeholder="Task title *" value={title} onChange={e => setTitle(e.target.value)} autoFocus />
+          <textarea placeholder="Description (optional)" value={desc} onChange={e => setDesc(e.target.value)} rows={2} style={{ resize: 'vertical' }} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <select value={assignee} onChange={e => setAssignee(e.target.value as Member)}>
               {MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
-          </div>
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Status</label>
             <select value={status} onChange={e => setStatus(e.target.value as TaskStatus)}>
               {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </div>
-        </div>
-        <div>
-          <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Deadline</label>
-          <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} />
-        </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 8, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-          <button className="btn-ghost" onClick={onClose} style={{ flex: 1 }}>Cancel</button>
-          <button className="btn-primary" onClick={submit} disabled={!title.trim()} style={{ flex: 2 }}>Add Task</button>
+          <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} placeholder="Deadline (optional)" />
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button onClick={onClose} style={{ flex: 1, background: 'transparent', color: '#8a8a8a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '10px', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button onClick={submit} disabled={!title.trim()} style={{ flex: 2, background: title.trim() ? '#0065BD' : '#1f1f1f', color: title.trim() ? '#fff' : '#555', border: 'none', borderRadius: 8, padding: '10px', cursor: title.trim() ? 'pointer' : 'default', fontSize: 13, fontWeight: 600, transition: 'background 0.15s' }}>Add Task</button>
+          </div>
         </div>
       </div>
-    </Modal>
+    </div>
   )
 }
 
-/* ─── ADD EVENT MODAL ────────────────────────────────────────────────────── */
-function AddEventModal({ onAdd, onClose }: {
-  onAdd: (e: Omit<Event, 'id' | 'created_at'>) => void
-  onClose: () => void
-}) {
+// ── Add Event Modal ────────────────────────────────────────────────────────
+function AddEventModal({ onAdd, onClose }: { onAdd: (e: Omit<Event, 'id' | 'created_at'>) => void; onClose: () => void }) {
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
-  const [location, setLocation] = useState('')
   const [type, setType] = useState<Event['type']>('team_meeting')
   const [desc, setDesc] = useState('')
 
   const submit = () => {
     if (!title.trim() || !date) return
-    onAdd({
-      title: title.trim(),
-      date,
-      time: time || undefined,
-      location: location.trim() || undefined,
-      type,
-      description: desc.trim() || undefined
-    })
+    onAdd({ title: title.trim(), date, time: time || undefined, type, description: desc.trim() || undefined })
     onClose()
   }
 
-  const canSubmit = title.trim() && date
-
   return (
-    <Modal title="New Event" onClose={onClose}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div>
-          <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Event Title *</label>
-          <input placeholder="e.g. Weekly Sync with TUM Venture Labs" value={title} onChange={e => setTitle(e.target.value)} autoFocus />
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 16 }}>
+      <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440 }} className="fade-in">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: 20, letterSpacing: '0.04em' }}>NEW EVENT</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#8a8a8a', cursor: 'pointer', fontSize: 20 }}>×</button>
         </div>
-        <div>
-          <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Type</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <input placeholder="Event title *" value={title} onChange={e => setTitle(e.target.value)} autoFocus />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+            <input type="time" value={time} onChange={e => setTime(e.target.value)} />
+          </div>
           <select value={type} onChange={e => setType(e.target.value as Event['type'])}>
             {Object.entries(EVENT_TYPE_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Date *</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+          <textarea placeholder="Notes (optional)" value={desc} onChange={e => setDesc(e.target.value)} rows={2} style={{ resize: 'vertical' }} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button onClick={onClose} style={{ flex: 1, background: 'transparent', color: '#8a8a8a', border: '1px solid #2a2a2a', borderRadius: 8, padding: '10px', cursor: 'pointer', fontSize: 13 }}>Cancel</button>
+            <button onClick={submit} disabled={!title.trim() || !date} style={{ flex: 2, background: (title.trim() && date) ? '#0065BD' : '#1f1f1f', color: (title.trim() && date) ? '#fff' : '#555', border: 'none', borderRadius: 8, padding: '10px', cursor: (title.trim() && date) ? 'pointer' : 'default', fontSize: 13, fontWeight: 600, transition: 'background 0.15s' }}>Add Event</button>
           </div>
-          <div>
-            <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Time</label>
-            <input type="time" value={time} onChange={e => setTime(e.target.value)} />
-          </div>
-        </div>
-        <div>
-          <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>📍 Location</label>
-          <input placeholder="e.g. TUM Main Campus, Room 01.07 / Zoom" value={location} onChange={e => setLocation(e.target.value)} />
-        </div>
-        <div>
-          <label style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: 6 }}>Notes</label>
-          <textarea placeholder="Agenda, context, links..." value={desc} onChange={e => setDesc(e.target.value)} rows={2} />
-        </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 8, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-          <button className="btn-ghost" onClick={onClose} style={{ flex: 1 }}>Cancel</button>
-          <button className="btn-primary" onClick={submit} disabled={!canSubmit} style={{ flex: 2 }}>Add Event</button>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-/* ─── BLOG SECTION ───────────────────────────────────────────────────────── */
-interface BlogPost {
-  id: string
-  title: string
-  content: string
-  author: Member
-  created_at: string
-  updated_at: string
-  tags: string[]
-}
-
-function BlogEditor({ onSave, onCancel, initial }: {
-  onSave: (p: Omit<BlogPost, 'id' | 'created_at' | 'updated_at'>) => void
-  onCancel: () => void
-  initial?: BlogPost
-}) {
-  const [title, setTitle] = useState(initial?.title || '')
-  const [content, setContent] = useState(initial?.content || '')
-  const [author, setAuthor] = useState<Member>(initial?.author || 'Aybars')
-  const [tagInput, setTagInput] = useState(initial?.tags.join(', ') || '')
-  const textRef = useRef<HTMLTextAreaElement>(null)
-  const [wordCount, setWordCount] = useState(0)
-
-  useEffect(() => {
-    setWordCount(content.trim() ? content.trim().split(/\s+/).length : 0)
-  }, [content])
-
-  const insertFormat = (before: string, after = '') => {
-    const ta = textRef.current
-    if (!ta) return
-    const start = ta.selectionStart, end = ta.selectionEnd
-    const selected = content.slice(start, end)
-    const newContent = content.slice(0, start) + before + selected + after + content.slice(end)
-    setContent(newContent)
-    setTimeout(() => {
-      ta.focus()
-      ta.setSelectionRange(start + before.length, end + before.length)
-    }, 0)
-  }
-
-  const handleSave = () => {
-    if (!title.trim() || !content.trim()) return
-    const tags = tagInput.split(',').map(t => t.trim()).filter(Boolean)
-    onSave({ title: title.trim(), content: content.trim(), author, tags })
-  }
-
-  return (
-    <div className="card fade-in" style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--line)', background: '#fafafa' }}>
-        <input
-          placeholder="Post title..."
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          style={{
-            fontFamily: 'var(--serif)', fontSize: 22, fontWeight: 700,
-            border: 'none', borderBottom: '2px solid var(--line)',
-            borderRadius: 0, background: 'transparent', padding: '6px 0', color: 'var(--ink)',
-            letterSpacing: '-0.01em'
-          }}
-        />
-      </div>
-
-      {/* Toolbar */}
-      <div className="blog-toolbar" style={{ display: 'flex', gap: 4, padding: '10px 20px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
-        {[
-          { label: 'B', action: () => insertFormat('**', '**'), title: 'Bold' },
-          { label: 'I', action: () => insertFormat('_', '_'), title: 'Italic' },
-          { label: 'H2', action: () => insertFormat('## '), title: 'Heading' },
-          { label: '—', action: () => insertFormat('\n---\n'), title: 'Divider' },
-          { label: '•', action: () => insertFormat('\n- '), title: 'List item' },
-          { label: '1.', action: () => insertFormat('\n1. '), title: 'Numbered list' },
-          { label: '❝', action: () => insertFormat('\n> '), title: 'Blockquote' },
-          { label: '`', action: () => insertFormat('`', '`'), title: 'Inline code' },
-        ].map(({ label, action, title: t }) => (
-          <button key={label} onClick={action} title={t}>{label}</button>
-        ))}
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)', alignSelf: 'center', fontFamily: 'var(--mono)' }}>
-          {wordCount} words
-        </span>
-      </div>
-
-      <textarea
-        ref={textRef}
-        value={content}
-        onChange={e => setContent(e.target.value)}
-        placeholder={`Write your startup update here...\n\nShare what the team has been working on, key insights, decisions made, next steps. Be specific — this is your team's living journal.`}
-        rows={14}
-        style={{
-          border: 'none', borderRadius: 0, padding: '20px',
-          fontSize: 14, lineHeight: 1.8, fontFamily: 'var(--sans)', color: 'var(--ink)',
-          width: '100%', background: 'var(--white)',
-        }}
-      />
-
-      <div style={{ padding: '14px 20px', borderTop: '1px solid var(--line)', background: '#fafafa', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <select value={author} onChange={e => setAuthor(e.target.value as Member)} style={{ width: 'auto', flex: 'none' }}>
-          {MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <input
-          placeholder="Tags: e.g. product, market, tech"
-          value={tagInput}
-          onChange={e => setTagInput(e.target.value)}
-          style={{ flex: 1, minWidth: 180 }}
-        />
-        <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button className="btn-ghost" onClick={onCancel}>Discard</button>
-          <button className="btn-primary" onClick={handleSave} disabled={!title.trim() || !content.trim()}>
-            {initial ? 'Save Changes' : 'Publish Post'}
-          </button>
         </div>
       </div>
     </div>
   )
 }
 
-function BlogPostCard({ post, onEdit, onDelete }: { post: BlogPost; onEdit: () => void; onDelete: () => void }) {
-  const [expanded, setExpanded] = useState(false)
-  const preview = post.content.slice(0, 300)
-  const hasMore = post.content.length > 300
-  const memberColor = MEMBER_COLORS[post.author as Member] || 'var(--muted)'
-
-  return (
-    <div className="card fade-in" style={{ marginBottom: 16, overflow: 'hidden' }}>
-      <div style={{ padding: '20px 24px', borderLeft: `4px solid ${memberColor}` }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
-          <h3 style={{ fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 700, color: 'var(--ink)', lineHeight: 1.3, flex: 1, marginRight: 16 }}>
-            {post.title}
-          </h3>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button onClick={onEdit} style={{ background: 'none', border: 'none', fontSize: 11, color: 'var(--blue)', cursor: 'pointer', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', padding: 0 }}>Edit</button>
-            <button onClick={onDelete} style={{ background: 'none', border: 'none', fontSize: 11, color: '#ccc', cursor: 'pointer', padding: 0 }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#b91c1c')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#ccc')}
-            >Delete</button>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 20, height: 20, background: memberColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#fff' }}>{post.author[0]}</div>
-            <span style={{ fontSize: 12, fontWeight: 600, color: memberColor }}>{post.author}</span>
-          </div>
-          <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--mono)' }}>
-            {new Date(post.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-          </span>
-          {post.updated_at !== post.created_at && (
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>(edited)</span>
-          )}
-          {post.tags.map(tag => (
-            <span key={tag} style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--blue)', background: 'var(--blue-lt)', padding: '2px 7px' }}>{tag}</span>
-          ))}
-        </div>
-
-        <div style={{ fontSize: 14, color: 'var(--mid)', lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>
-          {expanded ? post.content : preview}
-          {!expanded && hasMore && '...'}
-        </div>
-
-        {hasMore && (
-          <button
-            onClick={() => setExpanded(v => !v)}
-            style={{ marginTop: 10, background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', fontSize: 12, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', padding: 0 }}
-          >
-            {expanded ? 'Collapse ↑' : 'Read more ↓'}
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/* ─── MAIN PAGE ──────────────────────────────────────────────────────────── */
+// ── Main Page ──────────────────────────────────────────────────────────────
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [events, setEvents] = useState<Event[]>([])
   const [updates, setUpdates] = useState<Update[]>([])
-  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([])
-  const [activeTab, setActiveTab] = useState<'board' | 'timeline' | 'updates' | 'blog'>('board')
+  const [activeTab, setActiveTab] = useState<'board' | 'timeline' | 'updates'>('board')
   const [filterMember, setFilterMember] = useState<Member | 'all'>('all')
   const [showAddTask, setShowAddTask] = useState(false)
   const [showAddEvent, setShowAddEvent] = useState(false)
@@ -643,8 +252,6 @@ export default function Home() {
   const [updateAuthor, setUpdateAuthor] = useState<Member>('Aybars')
   const [loading, setLoading] = useState(true)
   const [isConnected, setIsConnected] = useState(true)
-  const [showBlogEditor, setShowBlogEditor] = useState(false)
-  const [editingPost, setEditingPost] = useState<BlogPost | null>(null)
 
   const loadData = useCallback(async () => {
     try {
@@ -664,35 +271,7 @@ export default function Home() {
     }
   }, [])
 
-  // Load blog posts from localStorage (local persistence)
-  useEffect(() => {
-    loadData()
-    try {
-      const saved = localStorage.getItem('mma_blog_posts')
-      if (saved) setBlogPosts(JSON.parse(saved))
-    } catch {}
-  }, [loadData])
-
-  const saveBlogPosts = (posts: BlogPost[]) => {
-    setBlogPosts(posts)
-    localStorage.setItem('mma_blog_posts', JSON.stringify(posts))
-  }
-
-  const addBlogPost = (data: Omit<BlogPost, 'id' | 'created_at' | 'updated_at'>) => {
-    const now = new Date().toISOString()
-    const post: BlogPost = { ...data, id: crypto.randomUUID(), created_at: now, updated_at: now }
-    saveBlogPosts([post, ...blogPosts])
-    setShowBlogEditor(false)
-  }
-
-  const updateBlogPost = (id: string, data: Omit<BlogPost, 'id' | 'created_at' | 'updated_at'>) => {
-    saveBlogPosts(blogPosts.map(p => p.id === id ? { ...p, ...data, updated_at: new Date().toISOString() } : p))
-    setEditingPost(null)
-  }
-
-  const deleteBlogPost = (id: string) => {
-    saveBlogPosts(blogPosts.filter(p => p.id !== id))
-  }
+  useEffect(() => { loadData() }, [loadData])
 
   const addTask = async (taskData: Omit<Task, 'id' | 'created_at' | 'updated_at'>) => {
     const { data } = await supabase.from('tasks').insert([{ ...taskData, updated_at: new Date().toISOString() }]).select().single()
@@ -741,385 +320,272 @@ export default function Home() {
     total: tasks.filter(t => t.assignee === m).length,
     done: tasks.filter(t => t.assignee === m && t.status === 'done').length,
     color: MEMBER_COLORS[m],
-    accent: MEMBER_ACCENT[m],
   }))
 
   if (loading) return (
-    <>
-      <GlobalStyle />
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontFamily: 'var(--serif)', fontSize: 52, fontWeight: 900, color: 'var(--blue)', letterSpacing: '-0.02em' }}>MMA</div>
-          <div style={{ color: 'var(--muted)', marginTop: 8, fontSize: 12, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Loading workspace...</div>
-        </div>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0a' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 48, fontWeight: 800, color: '#0065BD', letterSpacing: '-0.02em' }}>MMA</div>
+        <div style={{ color: '#8a8a8a', marginTop: 8, fontSize: 13 }}>Loading team tracker...</div>
       </div>
-    </>
+    </div>
   )
 
   return (
-    <>
-      <GlobalStyle />
-      <div style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--ink)' }}>
+    <div style={{ minHeight: '100vh', background: '#0a0a0a', padding: '0 0 40px' }}>
 
-        {/* ── HEADER ─────────────────────────────────────────────────────── */}
-        <header style={{ background: 'var(--white)', borderBottom: '1px solid var(--line)' }}>
-          {/* Top bar */}
-          <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 32px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 60 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-                <div style={{ fontFamily: 'var(--serif)', fontWeight: 900, fontSize: 26, color: 'var(--blue)', letterSpacing: '-0.02em' }}>MMA</div>
-                <div style={{ width: 1, height: 24, background: 'var(--line)' }} />
-                <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase' }}>TUM Venture Labs · Student Tech Track</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                {!isConnected && (
-                  <div style={{ fontSize: 11, color: '#b91c1c', background: '#FEF2F2', border: '1px solid #FECACA', padding: '4px 10px', letterSpacing: '0.04em' }}>
-                    ⚠ Supabase offline
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: 6 }}>
-                  {MEMBERS.map(m => (
-                    <div key={m} title={m} style={{
-                      width: 30, height: 30, background: MEMBER_COLORS[m],
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 11, fontWeight: 700, color: '#fff', letterSpacing: '0.02em',
-                    }}>{m[0]}</div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Nav tabs */}
-            <div style={{ display: 'flex', gap: 0, borderTop: '1px solid var(--line)' }}>
-              {([
-                ['board',    'Kanban Board'],
-                ['timeline', 'Timeline'],
-                ['updates',  'Team Updates'],
-                ['blog',     'Startup Journal'],
-              ] as const).map(([tab, label]) => (
-                <button
-                  key={tab}
-                  className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
-                  onClick={() => setActiveTab(tab)}
-                >{label}</button>
-              ))}
-            </div>
+      {/* Header */}
+      <div style={{ borderBottom: '1px solid #1f1f1f', padding: '0 24px' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 56 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 800, fontSize: 28, color: '#0065BD', letterSpacing: '-0.02em', lineHeight: 1 }}>MMA</div>
+            <div style={{ width: 1, height: 20, background: '#2a2a2a' }} />
+            <div style={{ fontSize: 12, color: '#8a8a8a', fontWeight: 500 }}>TUM Venture Labs</div>
           </div>
-        </header>
-
-        {/* ── BODY ───────────────────────────────────────────────────────── */}
-        <main style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 32px 60px' }}>
-
-          {/* Stats Row */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, marginBottom: 1 }}>
-            {[
-              { label: 'Total Tasks',  value: stats.total,      color: 'var(--ink)' },
-              { label: 'In Progress',  value: stats.inprogress,  color: 'var(--blue)' },
-              { label: 'Completed',    value: stats.done,        color: '#1a7a3c' },
-              { label: 'Overdue',      value: stats.overdue,     color: stats.overdue > 0 ? '#b91c1c' : 'var(--muted)' },
-            ].map(s => (
-              <div key={s.label} className="stat-card">
-                <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 6, letterSpacing: '0.1em', textTransform: 'uppercase', fontWeight: 600 }}>{s.label}</div>
-                <div style={{ fontFamily: 'var(--serif)', fontSize: 40, fontWeight: 900, color: s.color, lineHeight: 1 }}>{s.value}</div>
+          {!isConnected && (
+            <div style={{ fontSize: 11, color: '#ef4444', background: '#1f0a0a', border: '1px solid #3a1a1a', borderRadius: 20, padding: '3px 10px' }}>
+              ⚠ Supabase not connected
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 6 }}>
+            {MEMBERS.map(m => (
+              <div key={m} title={m} style={{ width: 28, height: 28, borderRadius: '50%', background: MEMBER_COLORS[m], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff' }}>
+                {m[0]}
               </div>
             ))}
           </div>
-
-          {/* Member Progress */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, marginBottom: 28 }}>
-            {memberStats.map(m => {
-              const pct = m.total > 0 ? Math.round((m.done / m.total) * 100) : 0
-              return (
-                <div key={m.name} className="stat-card" style={{ borderTop: 'none' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 28, height: 28, background: m.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#fff' }}>{m.name[0]}</div>
-                      <span style={{ fontFamily: 'var(--serif)', fontWeight: 700, fontSize: 15, color: 'var(--ink)' }}>{m.name}</span>
-                    </div>
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 20, fontWeight: 500, color: m.color }}>{pct}%</span>
-                  </div>
-                  <div style={{ height: 3, background: 'var(--line)' }}>
-                    <div style={{ height: '100%', width: `${pct}%`, background: m.color, transition: 'width 0.5s ease' }} />
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, fontFamily: 'var(--mono)' }}>{m.done}/{m.total} tasks done</div>
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Main Layout */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 288px', gap: 24 }}>
-
-            {/* LEFT CONTENT */}
-            <div>
-
-              {/* ── KANBAN BOARD ───────────────────────────────────────── */}
-              {activeTab === 'board' && (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        onClick={() => setFilterMember('all')}
-                        style={{
-                          padding: '4px 14px', border: '1px solid', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer',
-                          borderColor: filterMember === 'all' ? 'var(--blue)' : 'var(--line)',
-                          background: filterMember === 'all' ? 'var(--blue)' : 'transparent',
-                          color: filterMember === 'all' ? '#fff' : 'var(--muted)',
-                        }}
-                      >All</button>
-                      {MEMBERS.map(m => (
-                        <button key={m} onClick={() => setFilterMember(m)} style={{
-                          padding: '4px 14px', border: '1px solid', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer',
-                          borderColor: filterMember === m ? MEMBER_COLORS[m] : 'var(--line)',
-                          background: filterMember === m ? MEMBER_COLORS[m] : 'transparent',
-                          color: filterMember === m ? '#fff' : 'var(--muted)',
-                        }}>{m}</button>
-                      ))}
-                    </div>
-                    <button className="btn-primary" onClick={() => setShowAddTask(true)}>+ New Task</button>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                    {(['todo', 'inprogress', 'done'] as TaskStatus[]).map(status => {
-                      const cfg = STATUS_CONFIG[status]
-                      const col = filteredTasks.filter(t => t.status === status)
-                      return (
-                        <div key={status} style={{ background: 'var(--white)', border: '1px solid var(--line)', borderTop: `3px solid ${cfg.color}` }}>
-                          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: cfg.color }}>{cfg.label}</span>
-                            <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--mono)' }}>{col.length}</span>
-                          </div>
-                          <div style={{ padding: 10, minHeight: 60 }}>
-                            {col.length === 0 ? (
-                              <div style={{ textAlign: 'center', color: '#ccc', fontSize: 12, padding: '20px 0' }}>—</div>
-                            ) : col.map(task => (
-                              <TaskCard key={task.id} task={task} onStatusChange={updateTaskStatus} onDelete={deleteTask} />
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* ── TIMELINE ───────────────────────────────────────────── */}
-              {activeTab === 'timeline' && (
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                    <button className="btn-primary" onClick={() => setShowAddEvent(true)}>+ New Event</button>
-                  </div>
-
-                  {events.length === 0 ? (
-                    <div className="card" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-                      No events scheduled yet — add your first one
-                    </div>
-                  ) : (
-                    <div style={{ position: 'relative', paddingLeft: 28 }}>
-                      <div style={{ position: 'absolute', left: 10, top: 0, bottom: 0, width: 1, background: 'var(--line)' }} />
-                      {events.map(event => {
-                        const cfg = EVENT_TYPE_CONFIG[event.type]
-                        const d = getDaysUntil(event.date)
-                        const isPast = d < 0
-                        return (
-                          <div key={event.id} className="fade-in" style={{ position: 'relative', marginBottom: 14, opacity: isPast ? 0.55 : 1 }}>
-                            <div style={{ position: 'absolute', left: -22, top: 16, width: 10, height: 10, background: cfg.color, border: '2px solid var(--bg)', borderRadius: '50%' }} />
-                            <div className="card" style={{ borderLeft: `3px solid ${cfg.color}`, overflow: 'hidden' }}>
-                              <div style={{ padding: '14px 18px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                  <div style={{ flex: 1 }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: cfg.color, background: `${cfg.color}14`, padding: '2px 8px' }}>{cfg.label}</span>
-                                      {!isPast && d <= 3 && <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: '#b91c1c', textTransform: 'uppercase' }}>Soon</span>}
-                                    </div>
-                                    <div style={{ fontFamily: 'var(--serif)', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{event.title}</div>
-                                    {event.description && <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6 }}>{event.description}</div>}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--mono)', flexWrap: 'wrap' }}>
-                                      <span>📅 {formatDate(event.date)}{event.time ? ` · ${event.time}` : ''}</span>
-                                      {(event as any).location && <span>📍 {(event as any).location}</span>}
-                                      <span style={{ color: isPast ? 'var(--muted)' : 'var(--blue)', fontWeight: 500 }}>{formatRelative(event.date)}</span>
-                                    </div>
-                                  </div>
-                                  <button onClick={() => deleteEvent(event.id)}
-                                    style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer', fontSize: 16, padding: '0 2px', marginLeft: 12 }}
-                                    onMouseEnter={e => (e.currentTarget.style.color = '#b91c1c')}
-                                    onMouseLeave={e => (e.currentTarget.style.color = '#ccc')}
-                                  >×</button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ── TEAM UPDATES ───────────────────────────────────────── */}
-              {activeTab === 'updates' && (
-                <div>
-                  <div className="card" style={{ marginBottom: 16, padding: 20 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 12 }}>Post Update</div>
-                    <textarea
-                      placeholder="What are you working on? Share a progress update, blocker, or win..."
-                      value={newUpdate}
-                      onChange={e => setNewUpdate(e.target.value)}
-                      rows={3}
-                      onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) postUpdate() }}
-                      style={{ marginBottom: 10 }}
-                    />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <select value={updateAuthor} onChange={e => setUpdateAuthor(e.target.value as Member)} style={{ width: 'auto', flex: 1 }}>
-                        {MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
-                      </select>
-                      <button className="btn-primary" onClick={postUpdate} disabled={!newUpdate.trim()}>Post</button>
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8, fontFamily: 'var(--mono)', letterSpacing: '0.04em' }}>⌘ + Enter to post</div>
-                  </div>
-
-                  {updates.length === 0 ? (
-                    <div className="card" style={{ padding: '60px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>No updates yet</div>
-                  ) : updates.map(u => (
-                    <div key={u.id} className="card fade-in" style={{ marginBottom: 10, borderLeft: `3px solid ${MEMBER_COLORS[u.author as Member] || 'var(--muted)'}`, padding: '16px 20px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 24, height: 24, background: MEMBER_COLORS[u.author as Member] || '#888', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff' }}>{u.author[0]}</div>
-                          <span style={{ fontWeight: 600, fontSize: 13 }}>{u.author}</span>
-                        </div>
-                        <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--mono)' }}>
-                          {new Date(u.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} {new Date(u.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      <p style={{ fontSize: 14, color: 'var(--mid)', lineHeight: 1.7 }}>{u.content}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* ── STARTUP JOURNAL / BLOG ─────────────────────────────── */}
-              {activeTab === 'blog' && (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
-                    <div>
-                      <h2 style={{ fontFamily: 'var(--serif)', fontSize: 24, fontWeight: 700, letterSpacing: '-0.01em', marginBottom: 4 }}>Startup Journal</h2>
-                      <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>Document your startup's journey — ideas, learnings, pivots, decisions.</p>
-                    </div>
-                    {!showBlogEditor && !editingPost && (
-                      <button className="btn-primary" onClick={() => setShowBlogEditor(true)}>+ New Post</button>
-                    )}
-                  </div>
-
-                  {showBlogEditor && (
-                    <div style={{ marginBottom: 20 }}>
-                      <BlogEditor onSave={addBlogPost} onCancel={() => setShowBlogEditor(false)} />
-                    </div>
-                  )}
-
-                  {blogPosts.length === 0 && !showBlogEditor ? (
-                    <div className="card" style={{ padding: '60px 0', textAlign: 'center' }}>
-                      <div style={{ fontFamily: 'var(--serif)', fontSize: 18, color: 'var(--muted)', marginBottom: 8 }}>Your journal is empty</div>
-                      <div style={{ fontSize: 13, color: '#bbb', marginBottom: 20 }}>Start documenting your startup journey</div>
-                      <button className="btn-primary" onClick={() => setShowBlogEditor(true)}>Write First Post</button>
-                    </div>
-                  ) : blogPosts.map(post => {
-                    if (editingPost?.id === post.id) {
-                      return (
-                        <div key={post.id} style={{ marginBottom: 16 }}>
-                          <BlogEditor
-                            initial={post}
-                            onSave={data => updateBlogPost(post.id, data)}
-                            onCancel={() => setEditingPost(null)}
-                          />
-                        </div>
-                      )
-                    }
-                    return (
-                      <BlogPostCard
-                        key={post.id}
-                        post={post}
-                        onEdit={() => { setEditingPost(post); setShowBlogEditor(false) }}
-                        onDelete={() => deleteBlogPost(post.id)}
-                      />
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* ── RIGHT SIDEBAR ─────────────────────────────────────────── */}
-            <div>
-              {/* Calendar */}
-              <div className="card" style={{ marginBottom: 16 }}>
-                <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--line)' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--muted)' }}>Calendar</span>
-                </div>
-                <MiniCalendar events={events} />
-              </div>
-
-              {/* Upcoming Events */}
-              <div className="card" style={{ marginBottom: 16 }}>
-                <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--line)' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--muted)' }}>Upcoming</span>
-                </div>
-                <div style={{ padding: '12px 0' }}>
-                  {upcomingEvents.length === 0 ? (
-                    <div style={{ color: 'var(--muted)', fontSize: 12, textAlign: 'center', padding: '16px 0' }}>No upcoming events</div>
-                  ) : upcomingEvents.map(event => {
-                    const cfg = EVENT_TYPE_CONFIG[event.type]
-                    const d = getDaysUntil(event.date)
-                    return (
-                      <div key={event.id} style={{ display: 'flex', gap: 12, padding: '8px 20px', borderBottom: '1px solid var(--line)' }}>
-                        <div style={{ width: 3, background: cfg.color, flexShrink: 0, alignSelf: 'stretch' }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2 }}>{event.title}</div>
-                          <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--mono)' }}>
-                            {formatDate(event.date)}{event.time ? ` · ${event.time}` : ''}
-                          </div>
-                          {(event as any).location && (
-                            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>📍 {(event as any).location}</div>
-                          )}
-                        </div>
-                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', color: d <= 2 ? '#b91c1c' : d <= 7 ? '#b45309' : 'var(--muted)', flexShrink: 0, alignSelf: 'center', textTransform: 'uppercase' }}>{formatRelative(event.date)}</div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              {/* Last Meeting Actions */}
-              <div className="card">
-                <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--line)' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--muted)' }}>Last Meeting</span>
-                </div>
-                <div style={{ padding: '12px 20px' }}>
-                  {[
-                    { person: 'Maga',   text: 'Begin initial prototype',        color: MEMBER_COLORS['Maga'] },
-                    { person: 'Aybars', text: 'Contact NVIDIA re: collab',      color: MEMBER_COLORS['Aybars'] },
-                    { person: 'Moritz', text: 'Customer outreach emails',       color: MEMBER_COLORS['Moritz'] },
-                    { person: 'All',    text: 'Prepare 3–5 ideas for Friday',   color: 'var(--muted)' },
-                  ].map((item, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 10, paddingBottom: 10, marginBottom: 10, borderBottom: i < 3 ? '1px solid var(--line)' : 'none' }}>
-                      <div style={{ width: 4, height: 4, background: item.color, marginTop: 6, flexShrink: 0, borderRadius: '50%' }} />
-                      <div>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: item.color }}>{item.person} </span>
-                        <span style={{ fontSize: 12, color: 'var(--mid)' }}>{item.text}</span>
-                      </div>
-                    </div>
-                  ))}
-                  <div style={{ marginTop: 4, padding: '8px 12px', background: 'var(--blue-lt)', border: '1px solid var(--blue)', fontSize: 11, color: 'var(--blue)', fontFamily: 'var(--mono)', fontWeight: 500 }}>
-                    Friday 12:00 — Idea Brainstorming
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </main>
+        </div>
       </div>
 
-      {showAddTask  && <AddTaskModal  onAdd={addTask}  onClose={() => setShowAddTask(false)}  />}
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 24px 0' }}>
+
+        {/* Stats Row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+          {[
+            { label: 'Total Tasks', value: stats.total, color: '#fff' },
+            { label: 'In Progress', value: stats.inprogress, color: '#0065BD' },
+            { label: 'Completed', value: stats.done, color: '#22c55e' },
+            { label: 'Overdue', value: stats.overdue, color: stats.overdue > 0 ? '#ef4444' : '#8a8a8a' },
+          ].map(s => (
+            <div key={s.label} style={{ background: '#141414', border: '1px solid #1f1f1f', borderRadius: 10, padding: '14px 16px' }}>
+              <div style={{ fontSize: 11, color: '#8a8a8a', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</div>
+              <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 32, fontWeight: 700, color: s.color, lineHeight: 1 }}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Member Progress */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
+          {memberStats.map(m => {
+            const pct = m.total > 0 ? Math.round((m.done / m.total) * 100) : 0
+            return (
+              <div key={m.name} style={{ background: '#141414', border: '1px solid #1f1f1f', borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: '50%', background: m.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff' }}>{m.name[0]}</div>
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>{m.name}</span>
+                  </div>
+                  <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 18, fontWeight: 700, color: m.color }}>{pct}%</span>
+                </div>
+                <div style={{ height: 4, background: '#2a2a2a', borderRadius: 2 }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: m.color, borderRadius: 2, transition: 'width 0.4s ease' }} />
+                </div>
+                <div style={{ fontSize: 11, color: '#8a8a8a', marginTop: 6 }}>{m.done} / {m.total} tasks done</div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Main layout */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20 }}>
+
+          {/* Left — Tasks & Updates */}
+          <div>
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: 2, marginBottom: 16, background: '#141414', border: '1px solid #1f1f1f', borderRadius: 10, padding: 4 }}>
+              {([['board', 'Kanban Board'], ['timeline', 'Timeline'], ['updates', 'Updates']] as const).map(([tab, label]) => (
+                <button key={tab} onClick={() => setActiveTab(tab)} style={{
+                  flex: 1, padding: '8px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                  background: activeTab === tab ? '#0065BD' : 'transparent',
+                  color: activeTab === tab ? '#fff' : '#8a8a8a',
+                  fontSize: 13, fontWeight: 600, transition: 'all 0.15s',
+                }}>{label}</button>
+              ))}
+            </div>
+
+            {/* Board View */}
+            {activeTab === 'board' && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => setFilterMember('all')} style={{ padding: '4px 12px', borderRadius: 20, border: '1px solid', borderColor: filterMember === 'all' ? '#0065BD' : '#2a2a2a', background: filterMember === 'all' ? '#0a1929' : 'transparent', color: filterMember === 'all' ? '#0065BD' : '#8a8a8a', fontSize: 12, cursor: 'pointer' }}>All</button>
+                    {MEMBERS.map(m => (
+                      <button key={m} onClick={() => setFilterMember(m)} style={{ padding: '4px 12px', borderRadius: 20, border: '1px solid', borderColor: filterMember === m ? MEMBER_COLORS[m] : '#2a2a2a', background: filterMember === m ? `${MEMBER_COLORS[m]}18` : 'transparent', color: filterMember === m ? MEMBER_COLORS[m] : '#8a8a8a', fontSize: 12, cursor: 'pointer' }}>{m}</button>
+                    ))}
+                  </div>
+                  <button onClick={() => setShowAddTask(true)} style={{ background: '#0065BD', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ Add Task</button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                  {(['todo', 'inprogress', 'done'] as TaskStatus[]).map(status => {
+                    const cfg = STATUS_CONFIG[status]
+                    const col = filteredTasks.filter(t => t.status === status)
+                    return (
+                      <div key={status} style={{ background: '#0f0f0f', border: '1px solid #1f1f1f', borderRadius: 10, padding: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ width: 8, height: 8, borderRadius: '50%', background: cfg.color }} />
+                            <span style={{ fontSize: 12, fontWeight: 600, color: cfg.color, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{cfg.label}</span>
+                          </div>
+                          <span style={{ fontSize: 11, color: '#555', background: '#1a1a1a', padding: '1px 7px', borderRadius: 20 }}>{col.length}</span>
+                        </div>
+                        <div style={{ minHeight: 40 }}>
+                          {col.length === 0 ? (
+                            <div style={{ textAlign: 'center', color: '#333', fontSize: 12, padding: '16px 0' }}>—</div>
+                          ) : col.map(task => (
+                            <TaskCard key={task.id} task={task} onStatusChange={updateTaskStatus} onDelete={deleteTask} />
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Timeline View */}
+            {activeTab === 'timeline' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                  <button onClick={() => setShowAddEvent(true)} style={{ background: '#0065BD', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ Add Event</button>
+                </div>
+                <div style={{ position: 'relative', paddingLeft: 24 }}>
+                  <div style={{ position: 'absolute', left: 8, top: 0, bottom: 0, width: 1, background: '#1f1f1f' }} />
+                  {events.length === 0 ? (
+                    <div style={{ textAlign: 'center', color: '#555', padding: '40px 0', fontSize: 13 }}>No events yet — add your first one</div>
+                  ) : events.map((event, i) => {
+                    const cfg = EVENT_TYPE_CONFIG[event.type]
+                    const d = getDaysUntil(event.date)
+                    const isPast = d < 0
+                    return (
+                      <div key={event.id} style={{ position: 'relative', marginBottom: 16, opacity: isPast ? 0.5 : 1 }} className="fade-in">
+                        <div style={{ position: 'absolute', left: -20, top: 14, width: 10, height: 10, borderRadius: '50%', background: cfg.color, border: '2px solid #0a0a0a' }} />
+                        <div style={{ background: '#141414', border: `1px solid #1f1f1f`, borderRadius: 10, padding: '12px 14px', borderLeft: `3px solid ${cfg.color}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: cfg.color, background: `${cfg.color}18`, padding: '2px 7px', borderRadius: 20, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{cfg.label}</span>
+                                {!isPast && d <= 3 && <span style={{ fontSize: 10, color: '#ef4444', fontWeight: 600 }}>SOON</span>}
+                              </div>
+                              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{event.title}</div>
+                              {event.description && <div style={{ fontSize: 12, color: '#8a8a8a' }}>{event.description}</div>}
+                              <div style={{ fontSize: 11, color: '#555', marginTop: 4 }}>
+                                {formatDate(event.date)}{event.time ? ` · ${event.time}` : ''}
+                                <span style={{ marginLeft: 8, color: isPast ? '#555' : '#8a8a8a' }}>{formatRelative(event.date)}</span>
+                              </div>
+                            </div>
+                            <button onClick={() => deleteEvent(event.id)} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: 14, padding: '0 2px', marginLeft: 8 }}>×</button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Updates Feed */}
+            {activeTab === 'updates' && (
+              <div>
+                <div style={{ background: '#141414', border: '1px solid #1f1f1f', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+                  <textarea
+                    placeholder="Share a progress update..."
+                    value={newUpdate}
+                    onChange={e => setNewUpdate(e.target.value)}
+                    rows={3}
+                    style={{ resize: 'none', marginBottom: 10 }}
+                    onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) postUpdate() }}
+                  />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <select value={updateAuthor} onChange={e => setUpdateAuthor(e.target.value as Member)} style={{ width: 'auto', flex: 1 }}>
+                      {MEMBERS.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <button onClick={postUpdate} disabled={!newUpdate.trim()} style={{ background: newUpdate.trim() ? '#0065BD' : '#1f1f1f', color: newUpdate.trim() ? '#fff' : '#555', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, fontWeight: 600, cursor: newUpdate.trim() ? 'pointer' : 'default' }}>Post</button>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#555', marginTop: 6 }}>Tip: Cmd+Enter to post</div>
+                </div>
+                {updates.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: '#555', padding: '40px 0', fontSize: 13 }}>No updates yet</div>
+                ) : updates.map(u => (
+                  <div key={u.id} style={{ background: '#141414', border: '1px solid #1f1f1f', borderRadius: 10, padding: '14px 16px', marginBottom: 8, borderLeft: `3px solid ${MEMBER_COLORS[u.author as Member]}` }} className="fade-in">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 22, height: 22, borderRadius: '50%', background: MEMBER_COLORS[u.author as Member], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff' }}>{u.author[0]}</div>
+                        <span style={{ fontWeight: 600, fontSize: 13 }}>{u.author}</span>
+                      </div>
+                      <span style={{ fontSize: 11, color: '#555' }}>{new Date(u.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} {new Date(u.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <p style={{ fontSize: 13, color: '#d0d0d0', lineHeight: 1.6 }}>{u.content}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right Sidebar */}
+          <div>
+            {/* Mini Calendar */}
+            <div style={{ marginBottom: 16 }}>
+              <MiniCalendar events={events} />
+            </div>
+
+            {/* Upcoming */}
+            <div style={{ background: '#141414', border: '1px solid #1f1f1f', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#8a8a8a', marginBottom: 12 }}>Upcoming</div>
+              {upcomingEvents.length === 0 ? (
+                <div style={{ color: '#555', fontSize: 12, textAlign: 'center', padding: '12px 0' }}>No upcoming events</div>
+              ) : upcomingEvents.map(event => {
+                const cfg = EVENT_TYPE_CONFIG[event.type]
+                const d = getDaysUntil(event.date)
+                return (
+                  <div key={event.id} style={{ display: 'flex', gap: 10, marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid #1f1f1f' }}>
+                    <div style={{ width: 3, background: cfg.color, borderRadius: 2, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#e0e0e0', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{event.title}</div>
+                      <div style={{ fontSize: 11, color: '#555' }}>{formatDate(event.date)}{event.time ? ` · ${event.time}` : ''}</div>
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: d <= 2 ? '#ef4444' : d <= 7 ? '#f59e0b' : '#555', flexShrink: 0 }}>{formatRelative(event.date)}</div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Action items from last meeting */}
+            <div style={{ background: '#141414', border: '1px solid #1f1f1f', borderRadius: 12, padding: 16 }}>
+              <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#8a8a8a', marginBottom: 12 }}>Last Meeting</div>
+              {[
+                { person: 'Maga', text: 'Begin initial prototype', color: MEMBER_COLORS['Maga'] },
+                { person: 'Aybars', text: 'Contact NVIDIA re: collab', color: MEMBER_COLORS['Aybars'] },
+                { person: 'Moritz', text: 'Customer outreach emails', color: MEMBER_COLORS['Moritz'] },
+                { person: 'All', text: 'Prepare 3–5 ideas for Friday', color: '#8a8a8a' },
+              ].map((item, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: item.color, marginTop: 5, flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: item.color }}>{item.person} </span>
+                    <span style={{ fontSize: 12, color: '#aaa' }}>{item.text}</span>
+                  </div>
+                </div>
+              ))}
+              <div style={{ marginTop: 10, padding: '6px 10px', background: '#0a1929', border: '1px solid #0065BD30', borderRadius: 7, fontSize: 11, color: '#0065BD' }}>
+                Friday 12:00 — Idea Brainstorming
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showAddTask && <AddTaskModal onAdd={addTask} onClose={() => setShowAddTask(false)} />}
       {showAddEvent && <AddEventModal onAdd={addEvent} onClose={() => setShowAddEvent(false)} />}
-    </>
+    </div>
   )
 }
